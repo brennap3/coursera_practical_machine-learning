@@ -214,9 +214,9 @@ trainv6<-dplyr::select(trainv5,
 
 ```
 
+The output from varclus is shown below.
 
-
-
+![alt text](https://github.com/brennap3/coursera_practical_machine-learning/blob/master/Rplot_varclus.png)
 
 The final columns chosen are:
 
