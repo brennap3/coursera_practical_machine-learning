@@ -675,14 +675,14 @@ for(RO in list_models){
 
 The out of sample error is lowest for the random forest and C5.0. GBM's and KNN also worked well (in both cases the data is centered and scaled. see output below.)
 
-# [1] "rf,method used, Preprocessing details:,,sample errors,1.05281032433351"
+[1] "rf,method used, Preprocessing details:,,sample errors,1.05281032433351"
 
-# [1] "C5.0,method used, Preprocessing details:,,sample errors,1.22261844116148"
+[1] "C5.0,method used, Preprocessing details:,,sample errors,1.22261844116148"
 
 
-# [1] "knn,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,4.95839701137715"
+[1] "knn,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,4.95839701137715"
 
-# [1] "gbm,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,6.89420954321617"
+[1] "gbm,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,6.89420954321617"
 
 
 
@@ -731,7 +731,12 @@ print(predictions)
 
 **Conclusion**
 
-
+All parts of the assignment were completed.
+The github repo was set up https://github.com/brennap3/coursera_practical_machine-learning.
+Feature selection is carried out.
+Various models were trained.
+The models were evaluated using both cross validation and out of sample error.
+The models were applied to the 20 test cases available in the test data.
 
 Appendix
 
