@@ -1,0 +1,728 @@
+---
+title: "Practical Machine Learning"
+author: "Peter Brennan"
+date: "Sunday, July 19, 2015"
+output: html_document
+---
+
+**Summary**
+
+The aim of the exercise is to train a predictive model  that can predict correct or incorrect barbell lifts.
+
+**Reading in and partitioning the data**
+
+The data is read in and partitioned into training and testing set. The training data set is then further partitioned into a train - test set whih will be used to explore the data, train a model and the train -test dataa will be left apart till the end of the exercise to evaluate the model.
+
+```{r, eval=F}
+
+library(plyr)
+library(dplyr)
+library(caret)
+library(utils)
+library(ggplot2)
+
+##read in the training and test data
+
+train<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+names(train)
+test<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+names(test)
+
+##
+
+# test subset: 30% of global training data
+TrainTestIndex <- createDataPartition(y = train$classe, p = 0.3, list = F)
+TrainTest <- train[TrainTestIndex, ]
+
+# training subset: 70% of original training data will be used for exploraotry analysis and trianing the model
+train <- train[-TrainTestIndex, ]
+nrow(train)
+```
+
+**Exploratory analysis of the data**
+
+The dataset has 159 predictors and a simngle class. The summary statistics are shown below for the the training sets
+
+```{r, echo=T,eval=F}
+nrow(train)
+ncol(train)
+summary(train)
+```
+
+A check is also carried out on the dataset to see if tere is a class imbalance is apparent in the data. It is important to check for class imbalance as it can drastically effect the performance of the model. Class imbalance is the problem where one class of drastically outnumbers the other class, as ml learners are predicated on trying to return te highest predictive accuracy, the learner can do this by assigning all predictions to the majority class. To overcome this problem the data must be either over or undersampled to balance out the imbalance or else use a learner that is capable of dealing with the class imbalance in the data. From the barchart plotted we can see that the data set does not suffer from class imbalance.
+
+
+```{r, echo=T,eval=F}
+
+##check for class imbalance
+c <- ggplot(train, aes(classe))
+
+# By default, uses stat="bin", which gives the count in each category
+c + geom_bar()+ggtitle("counts of each class")
+
+```
+From the  bar plot it can be seen that there is no class imbalance in the data. However there are a considerable. Code is also suppled to create a summary count on the count of observation in train test dataset.
+
+```{r, echo=T,eval=F}
+
+
+##get how many rows
+
+by_classe <- group_by(train, classe)
+classe_count <- summarise(by_classe,
+                   count = n())
+print(classe_count)
+
+# classe count
+# 1      A  2731
+# 2      B  1867
+# 3      C  1678
+# 4      D  1580
+# 5      E  1768
+# > 
+
+```
+
+**Cleaning the data**
+
+From the data a check is first carried to see what covariates have all NA values. These are then removed from the analysis.
+
+
+```{r, echo=T,eval=F}
+
+
+trainingnas <- apply(train, 2, function(x) {
+  sum(is.na(x))
+})
+
+str(trainingnas)
+
+##remove rows with na's
+trainv2<- train[, which(trainingnas == 0)]
+summary(trainv2)
+
+
+```
+
+**Feature selection**
+
+Variable reduction is necessary from a number of standpoints:
+It removes variables of low informational value, which are of no use in the model.
+It removes highly correlated variables which are (a) redundant and/or (b) may effect the  the model in a negative model by breaking assumptions that the particular modelling techniques is built upon.
+It removes variables which are not necessary as the same information are held within other covariates. 
+
+The benefits of doing type of variable reduction techniques is three fold.
+It can make the model more robust, this is due to enhanced generalisation by reducing over-fitting.
+It makes the model easier to understand by removing unneeded and unnecessary complexity.
+It can result in faster training times due to the reduced data size allowing more complex modelling techniques to be deployed and/or multiple analysis to be carried on different combinations of covariates or additional pre-processing of the data.
+
+Variable reduction in this analysis is achieved through four different techniques:
+
+1. Removal of useless attributes such as indexes timestamp for test, usernames etc.
+
+2. Removal of attributes with near zero variance is next carried out (caret package).
+
+3. Removal of highly correlated variables.
+
+4. Next the varclus (in the hmisc package) procedure is ran. This is a port of the varclus procedure from sas (sas institute). This original SAS procedure clusters highly correlated covariates into the same cluster and these variables are strongly uncorrelated from variables in other clusters. Once the clustering is done  a representative  covariate from each cluster is chosen. This can be easily done by plotting the results of the clustering exercise and   visualizing it as a  dendrogram. The different clusters are then clearly visible  and one representative variable from each cluster is chosen. The varclus procure uses a method which can be considered to be devisive and iterative at the same time. It consists of 3 steps.
+
+A cluster is chosen for splitting. Depending on the splitting criteria this can be either (a) the chosen cluster has the smallest amount of variation that can be explained by the cluster or alternatively (b) by the most sizeable eigenvalue belonging to the second principal component.
+The cluster is then divided into two based on the first two principal components by carrying out an orthoblique rotation. 
+
+Variables are then iteratively moved to different clusters to increase to the greatest extent possible the variance explained for by each individual cluster.
+
+The R implementation does hierarchical cluster analysis using either the Hoeffding d statistics, squared pearson or Spearman correllation coefficient.
+
+5. Finally the selection is checked first with the Boruta package and secondly with  a recursive feature selection algorithm to see if any of the variables are superfluous and can be removed. Boruta is a feature selection algorithm which finds all relevant features. Boruta functions in an iterative  mean, in each iteration removes features by means of a statistical test. The recursive feature selection algorithm is used to check if any remaining variables can be removed , by making a number of passes through the data. The algorithm explores all possible subsets of the attributes. As can be seen all 25 are selected in the example (21 gives the lowest rmse, however it is very marginal). 
+
+
+```{r, echo=T,eval=F}
+##remove rows with Zero variance
+nzvartrainv3 <- nearZeroVar(trainv2, saveMetrics= TRUE)
+##http://topepo.github.io/caret/preprocess.html
+
+trainv3 <- trainv2[,-nearZeroVar(trainv2)]
+
+nrow(trainv3)
+?str
+str(trainv3,list.len=ncol(trainv3)) ##59 rows
+##rows one and two are removed as these are index like columns
+##remove X and user_name as these are just indexes
+
+trainv4<-trainv3[,3:59]
+str(trainv4)
+##remove the following as these are useless attributes
+# $ raw_timestamp_part_2: int  788290 808298 820366 120339 196328 440390 484434 500302 528316 560359 ...
+# $ cvtd_timestamp      : Factor w/ 20 levels "02/12/2011 13:32",..: 9 9 9 9 9 9 9 9 9 9 ...
+# $ num_window          : int  11 11 11 12 12 12 12 12 12 12 ...
+ncol(trainv4)
+colnames(trainv4)
+trainv4<-trainv4[,5:57]
+colnames(trainv4)
+ncol(trainv4)
+##find highly correlated variabales
+?cor
+##remove highly correlated variables
+ncol(trainv4)
+descrCor <- cor(trainv4[,1:52])
+highlyCorDescr <- findCorrelation(descrCor, cutoff = .75)
+trainv5 <- trainv4[,-highlyCorDescr]
+str(trainv5)
+
+
+library(Hmisc)
+chosen_variables<-varclus(classe~.,data=trainv5)
+
+plot(varclus(classe~.,data=trainv5)) ##use a hierarchical clustering algo to pick out indiv
+
+##what varclus picks as the differnet groups
+
+
+summary(chosen_variables)
+
+chosen_variables$hclust
+
+colnames(trainv5)
+
+trainv6<-dplyr::select(trainv5,
+              gyros_dumbbell_y, 
+              magnet_forearm_y,
+              gyros_arm_x, 
+              gyros_forearm_x,
+              magnet_arm_x,
+              pitch_arm,
+              magnet_belt_z,
+              roll_dumbbell,
+              pitch_dumbbell,
+              total_accel_dumbbell,
+              magnet_belt_x,
+              roll_forearm,
+              yaw_arm,
+              gyros_belt_x,
+              roll_arm,
+              gyros_arm_z,
+              yaw_belt,
+              gyros_belt_z,
+              total_accel_arm,
+              pitch_forearm,
+              accel_forearm_x,
+              classe
+              )
+
+```
+
+
+
+
+
+The final columns chosen are:
+
+              gyros_dumbbell_y, 
+              magnet_forearm_y,
+              gyros_arm_x, 
+              gyros_forearm_x,
+              magnet_arm_x,
+              pitch_arm,
+              magnet_belt_z,
+              roll_dumbbell,
+              pitch_dumbbell,
+              total_accel_dumbbell,
+              magnet_belt_x,
+              roll_forearm,
+              yaw_arm,
+              gyros_belt_x,
+              roll_arm,
+              gyros_arm_z,
+              yaw_belt,
+              gyros_belt_z,
+              total_accel_arm,
+              pitch_forearm,
+              accel_forearm_x,
+              classe
+
+As can be seen the Boruta learner confirms all these to be important.
+
+```{r, echo=T,eval=F}
+
+library(Boruta)
+
+Bor.trainv5<-Boruta(classe~.,data=trainv5)
+
+str(trainv5)
+
+summary(Bor.trainv5)
+
+Bor.trainv5$finalDecision
+##use carets forward selection algo
+##no reduction
+Bor.trainv5$finalDecision
+# yaw_belt         gyros_belt_x         gyros_belt_y         gyros_belt_z        magnet_belt_x 
+# Confirmed            Confirmed            Confirmed            Confirmed            Confirmed 
+# magnet_belt_z             roll_arm            pitch_arm              yaw_arm      total_accel_arm 
+# Confirmed            Confirmed            Confirmed            Confirmed            Confirmed 
+# gyros_arm_x          gyros_arm_z          accel_arm_y         magnet_arm_x         magnet_arm_z 
+# Confirmed            Confirmed            Confirmed            Confirmed            Confirmed 
+# roll_dumbbell       pitch_dumbbell         yaw_dumbbell total_accel_dumbbell     gyros_dumbbell_y 
+# Confirmed            Confirmed            Confirmed            Confirmed            Confirmed 
+# gyros_dumbbell_z    magnet_dumbbell_z         roll_forearm        pitch_forearm          yaw_forearm 
+# Confirmed            Confirmed            Confirmed            Confirmed            Confirmed 
+# total_accel_forearm      gyros_forearm_x      accel_forearm_x      accel_forearm_z     magnet_forearm_x 
+# Confirmed            Confirmed            Confirmed            Confirmed            Confirmed 
+# magnet_forearm_y     magnet_forearm_z 
+# Confirmed            Confirmed 
+# Levels: Tentative Confirmed Rejected
+# > 
+
+```
+
+
+Again the rfe algorithm confirms that all remaining covariates are important.
+
+```{r, echo=T,eval=F}
+
+# run the RFE algorithm
+
+results <- rfe(trainv5[,1:25], trainv5[,26], sizes=c(1:25), rfeControl=control)
+
+# summarize the results
+
+print(results)
+predictors(results)
+plot(results, type=c("a"))
+
+
+
+# Recursive feature selection
+# 
+# Outer resampling method: Cross-Validated (10 fold) 
+# 
+# Resampling performance over subset size:
+  
+#   Variables Accuracy  Kappa AccuracySD  KappaSD Selected
+# 1   0.9923 0.9903  0.0020153 0.002549         
+# 2   0.9805 0.9753  0.0094871 0.012028         
+# 3   0.9808 0.9757  0.0110494 0.013963         
+# 4   0.9959 0.9948  0.0021613 0.002733         
+# 5   0.9971 0.9963  0.0018915 0.002392         
+# 6   0.9966 0.9957  0.0015967 0.002020         
+# 7   0.9968 0.9959  0.0020105 0.002543         
+# 8   0.9967 0.9959  0.0017677 0.002236         
+# 9   0.9979 0.9973  0.0012663 0.001602         
+# 10   0.9979 0.9973  0.0014163 0.001791         
+# 11   0.9976 0.9970  0.0014617 0.001849         
+# 12   0.9976 0.9970  0.0019518 0.002469         
+# 13   0.9977 0.9971  0.0018483 0.002338         
+# 14   0.9977 0.9971  0.0011576 0.001464         
+# 15   0.9981 0.9976  0.0009917 0.001254         
+# 16   0.9982 0.9977  0.0010795 0.001365         
+# 17   0.9981 0.9976  0.0009619 0.001217         
+# 18   0.9983 0.9978  0.0010792 0.001365         
+# 19   0.9984 0.9979  0.0011716 0.001482         
+# 20   0.9982 0.9977  0.0011069 0.001400         
+# 21   0.9984 0.9979  0.0011716 0.001482        *
+# 22   0.9984 0.9979  0.0012665 0.001602         
+# 23   0.9982 0.9977  0.0013838 0.001750         
+# 24   0.9983 0.9978  0.0012525 0.001584         
+# 25   0.9981 0.9976  0.0011277 0.001426         
+# 
+# The top 5 variables (out of 21):
+#   raw_timestamp_part_1, yaw_arm, roll_arm, gyros_belt_z, magnet_forearm_x
+
+
+##all variables appear to be importnat from both Boruta and Forward selection
+
+```
+
+**Training a model on the training set**
+
+A random forest model is trained on the selected dataset and predictive accuracy is asesessed. Both using the 10 fold cross validaiton and and using out of sample error.
+
+```{r, echo=T,eval=F}
+
+trainv6<-dplyr::select(trainv5,
+              gyros_dumbbell_y, 
+              magnet_forearm_y,
+              gyros_arm_x, 
+              gyros_forearm_x,
+              magnet_arm_x,
+              pitch_arm,
+              magnet_belt_z,
+              roll_dumbbell,
+              pitch_dumbbell,
+              total_accel_dumbbell,
+              magnet_belt_x,
+              roll_forearm,
+              yaw_arm,
+              gyros_belt_x,
+              roll_arm,
+              gyros_arm_z,
+              yaw_belt,
+              gyros_belt_z,
+              total_accel_arm,
+              pitch_forearm,
+              accel_forearm_x,
+              classe
+              )
+
+
+#prep <- preProcess(trainv6[, numeric_cols], method = c("center","scale","medianImpute"))
+
+trControl <- trainControl(method = "cv", number = 10)
+
+# build model
+modelFit.rf <- train(trainv6$classe ~ ., method = "rf", trControl = trControl, 
+                     trainv6)
+
+summary(modelFit.rf)
+
+# print(modelFit.rf)
+# Random Forest 
+# 
+# 13733 samples
+#    21 predictor
+#     5 classes: 'A', 'B', 'C', 'D', 'E' 
+# 
+# No pre-processing
+# Resampling: Cross-Validated (10 fold) 
+# 
+# Summary of sample sizes: 12359, 12360, 12360, 12360, 12359, 12359, ... 
+# 
+# Resampling results across tuning parameters:
+# 
+#   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
+#    2    0.9887137  0.9857229  0.002916101  0.003689723
+#   11    0.9877674  0.9845259  0.003937994  0.004981962
+#   21    0.9781544  0.9723668  0.003990424  0.005053083
+
+```
+
+
+
+
+**Predictive accuracy of the model**
+
+10 fold cross validation is used in building our model. Cross fold validation is a model validation technique for evaluate how the results of a statistical analysis will extrapolate out to an independent data set. When carrying out cross validation the training set is further subsetted into a test and train dataset , this is done to:
+
+1. Reduce overfitting.
+
+2. Gain a deeper perception into how the model will perform on an independent dataset.
+
+On each round of the cross validation a process of dividing the data into complimentary data sets is carried out, with training carried out on one subset and testing on the other. Multiple rounds of cross validation are performed (in our case 10) on the various partitions. The validation results are then averaged out to over the various rounds of cross validation to give a model that has reduced bias due to reduced variability. 
+
+
+
+The performance metrics used to asses the model accuracy are:
+Predictive accuracy
+Kappa
+In sample and out of sample errors are also used.
+
+**Predictive accuracy**
+
+The predictive accuracy is sum of the true negative and true positives divided by the sum of the tue positives, true negatives, false negatives and false positives.
+
+** Creating additional models and comparing the performance to the random forest**
+
+Additional models are created for the the following learners  and preprocess methods.
+All models are trained with 10 fold cross validation, no pre-processing is used except where '_Processed'  where scaling and centering is carried out.
+
+rf Random_Forest
+C50 (C5.0 decision tree )          
+nb (naive bayes)           
+svm (support vector machine)         
+NNET_Unprocessed (neural net, no pre-processing)
+NNET_Processed   (neural net,  pre-processing)
+knn              (k-nearest neighbour)
+GBM_Processed    (gradient boosted machine,  pre-processing)
+GBM_Unprocessed  (gradient boosted machine, no  pre-processing)
+
+
+```{r, echo=T,eval=F}
+
+##now compare to C5.0 model
+
+trControl <- trainControl(method = "cv", number = 10)
+
+# build model
+modelFit.C5.0 <- train(trainv6$classe ~ ., method = "C5.0", trControl = trControl, 
+                    trainv6)
+
+print(modelFit.C5.0)
+
+
+
+trControl <- trainControl(method = "cv", number = 10)
+
+modelFit.nb <- train(classe ~.,data=trainv6,
+                  preProcess=c("center","scale"),method="nb", trControl = trControl)
+
+print(modelFit.nb)
+
+trControl <- trainControl(method = "cv", number = 10)
+
+modelFit.svm <- train(classe ~.,data=trainv6,
+                     preProcess=c("center","scale"),method="svmRadial", trControl = trControl)
+
+print(modelFit.svm)
+
+trControl <- trainControl(method = "cv", number = 10)
+
+str(trainv6)
+?caret::train
+modelFit.nnet <- train(classe ~.,data=trainv6,
+                      preProcess=c("center","scale"),method="nnet",trControl = trControl)
+
+
+print(modelFit.nnet)
+
+modelFit.nnet.unproc <- train(classe ~.,data=trainv6,method="nnet",trControl = trControl)
+
+
+print(modelFit.nnet.unproc)
+
+
+trControl <- trainControl(method = "cv", number = 10)
+
+str(trainv6)
+
+?caret::train
+
+modelFit.knn <- train(classe ~.,data=trainv6,
+                       preProcess=c("center","scale"),method="knn",trControl = trControl)
+
+print(modelFit.knn)
+
+modelFit.gbm <- train(classe ~.,data=trainv6,
+                      preProcess=c("center","scale"),method="gbm",trControl = trControl)
+
+print(modelFit.gbm)
+
+modelFit.gbm.unproc <- train(classe ~.,data=trainv6,method="gbm",trControl = trControl)
+
+print(modelFit.gbm.unproc)
+```
+
+**Which learner performed best **
+
+This is best  understood using the summary information.
+Both random forest and the c5.0 learner deliver the best predicitive accuracy and kappa values, The nnet delivers the worst followed by the naive bayes model. K-NN and the gbm also give high levels of predictive accuracy.
+
+
+```{r, echo=T,eval=F}
+results <- resamples(list(Random_Forest=modelFit.rf,C50=modelFit.C5.0,
+                          nb=modelFit.nb,svm=modelFit.svm,NNET_Unprocessed=modelFit.nnet.unproc,
+                          NNET_Processed=modelFit.nnet,
+                          knn=modelFit.knn , 
+                          GBM_Processed=modelFit.gbm , GBM_Unprocessed=modelFit.gbm.unproc))
+
+summary(results)
+
+# Call:
+# summary.resamples(object = results)
+# 
+# Models: Random_Forest, C50, nb, svm, NNET_Unprocessed, NNET_Processed, knn, GBM_Processed, GBM_Unprocessed 
+# Number of resamples: 10 
+# 
+# Accuracy 
+#                    Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+# Random_Forest    0.9840  0.9871 0.9891 0.9887  0.9911 0.9927    0
+# C50              0.9833  0.9869 0.9880 0.9881  0.9898 0.9927    0
+# nb               0.6701  0.6908 0.7044 0.6993  0.7088 0.7249    0
+# svm              0.8741  0.8781 0.8863 0.8848  0.8908 0.8951    0
+# NNET_Unprocessed 0.3687  0.3888 0.3985 0.3955  0.4044 0.4108    0
+# NNET_Processed   0.5652  0.5706 0.5766 0.5811  0.5871 0.6116    0
+# knn              0.9402  0.9441 0.9472 0.9482  0.9525 0.9563    0
+# GBM_Processed    0.9134  0.9219 0.9249 0.9266  0.9315 0.9417    0
+# GBM_Unprocessed  0.9161  0.9209 0.9250 0.9272  0.9343 0.9410    0
+# 
+# Kappa 
+#                    Min. 1st Qu. Median   Mean 3rd Qu.   Max. NA's
+# Random_Forest    0.9797  0.9836 0.9862 0.9857  0.9887 0.9908    0
+# C50              0.9788  0.9834 0.9848 0.9849  0.9871 0.9908    0
+# nb               0.5850  0.6110 0.6273 0.6214  0.6326 0.6540    0
+# svm              0.8404  0.8454 0.8559 0.8540  0.8616 0.8672    0
+# NNET_Unprocessed 0.1952  0.2314 0.2423 0.2370  0.2480 0.2540    0
+# NNET_Processed   0.4523  0.4584 0.4631 0.4705  0.4777 0.5108    0
+# knn              0.9243  0.9293 0.9332 0.9344  0.9399 0.9448    0
+# GBM_Processed    0.8905  0.9013 0.9051 0.9072  0.9134 0.9262    0
+# GBM_Unprocessed  0.8938  0.8999 0.9051 0.9079  0.9168 0.9254    0
+
+
+
+# boxplots of results
+bwplot(results)
+# dot plots of results
+dotplot(results)
+
+```
+
+
+
+**Determining the out of sample error of the random forest model**
+As random forests gave the best performance out of all the surveyed methods when assesing the predictive accuracy it was decided to test this model for its out of sample accuracy.
+
+The trained models now make use of the testing sub data set (labelled test) to approximate the out of sample error rate. 
+
+The testing sub data set was at the ouset part of the total training set, but it was set to one side and not used during pre-processing variable selection and training of the different models. This should lt the testsubset deliver an unprejudiced estimate of the different models and pre processing methods (KNN,random forest, GBM, NNET, Naive Bayes, C5.0, SVM's) predictive accuracy.
+
+
+
+```{r, echo=T,eval=F}
+
+
+###
+## filter on the selected covariates identified by the feature selection techniques
+##on test data
+str(TrainTest)
+TrainTestSbset<-dplyr::select(TrainTest,
+                           gyros_dumbbell_y, 
+                           magnet_forearm_y,
+                           gyros_arm_x, 
+                           gyros_forearm_x,
+                           magnet_arm_x,
+                           pitch_arm,
+                           magnet_belt_z,
+                           roll_dumbbell,
+                           pitch_dumbbell,
+                           total_accel_dumbbell,
+                           magnet_belt_x,
+                           roll_forearm,
+                           yaw_arm,
+                           gyros_belt_x,
+                           roll_arm,
+                           gyros_arm_z,
+                           yaw_belt,
+                           gyros_belt_z,
+                           total_accel_arm,
+                           pitch_forearm,
+                           accel_forearm_x,classe
+                           )
+
+
+out.of.sample.error.function<-function(model,trainset,trainset.class){
+  
+  predictions <- predict(model, trainset)
+  
+  outOfSampleError.accuracy <- sum(predictions == trainset.class)/length(predictions)
+  
+  outOfSampleError <- 1 - outOfSampleError.accuracy
+  
+  return(outOfSampleError*100)
+}
+
+
+
+list_models<-list(modelFit.rf,
+ modelFit.C5.0,modelFit.nb,
+ modelFit.svm,modelFit.nnet.unproc,
+ modelFit.nnet,modelFit.knn , 
+ modelFit.gbm,modelFit.gbm.unproc)
+
+
+for(RO in list_models){
+           print(out.of.sample.error.function(RO,TrainTestSbset,TrainTestSbset$classe),sep=","
+                       )
+            }
+##the out of sample errors for all the diffferent  model is 
+
+# [1] 1.05281
+# [1] 1.222618
+# [1] 30.56546
+# [1] 10.3583
+# [1] 58.26116
+# [1] 45.30481
+# [1] 4.924435
+# [1] 6.89421
+# [1] 7.607404
+
+
+list_models<-list(modelFit.rf,
+                  modelFit.C5.0,modelFit.nb,
+                  modelFit.svm,modelFit.nnet.unproc,
+                  modelFit.nnet,modelFit.knn , 
+                  modelFit.gbm,modelFit.gbm.unproc)
+
+?ifelse
+
+for(RO in list_models){
+  
+  print(paste(RO$method,"method used, Preprocessing details:",ifelse(is.na(RO$preProcess[10]),'Not applicable',RO$preProcess[10]),"sample errors",out.of.sample.error.function(RO,TrainTestSbset,TrainTestSbset$classe),sep=","))
+}
+
+# 
+# [1] "rf,method used, Preprocessing details:,,sample errors,1.05281032433351"
+# [1] "C5.0,method used, Preprocessing details:,,sample errors,1.22261844116148"
+# [1] "nb,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,30.5654610290372"
+# [1] "svmRadial,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,10.358295126507"
+# [1] "nnet,method used, Preprocessing details:,,sample errors,58.2611648836814"
+# [1] "nnet,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,45.3048055697062"
+# [1] "knn,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,4.95839701137715"
+# [1] "gbm,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,6.89420954321617"
+# [1] "gbm,method used, Preprocessing details:,,sample errors,7.60740363389371"
+
+
+
+```
+
+The out of sample error is lowest for the random forest and C5.0. GBM's and KNN also worked well (in both cases the data is centered and scaled. see output below.)
+
+# [1] "rf,method used, Preprocessing details:,,sample errors,1.05281032433351"
+
+# [1] "C5.0,method used, Preprocessing details:,,sample errors,1.22261844116148"
+
+
+# [1] "knn,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,4.95839701137715"
+
+# [1] "gbm,method used, Preprocessing details:,c(\"center\", \"scale\"),sample errors,6.89420954321617"
+
+
+
+**Using the model to predict values**
+
+
+As the random forest gave the highest predictive accuracy assesed using both cross validation and out of sample error. The results are shown below.
+
+```{r, echo=T,eval=F}
+
+
+###
+## filter on the selected covariates identified by the feature selection techniques
+###
+testtestset<-dplyr::select(test,
+                              gyros_dumbbell_y, 
+                              magnet_forearm_y,
+                              gyros_arm_x, 
+                              gyros_forearm_x,
+                              magnet_arm_x,
+                              pitch_arm,
+                              magnet_belt_z,
+                              roll_dumbbell,
+                              pitch_dumbbell,
+                              total_accel_dumbbell,
+                              magnet_belt_x,
+                              roll_forearm,
+                              yaw_arm,
+                              gyros_belt_x,
+                              roll_arm,
+                              gyros_arm_z,
+                              yaw_belt,
+                              gyros_belt_z,
+                              total_accel_arm,
+                              pitch_forearm,
+                              accel_forearm_x)
+
+predictions <- predict(modelFit.rf, testtestset)
+
+print(predictions)
+
+# [1] B A B A A E D B A A B C B A E E A B B B
+# Levels: A B C D E
+
+```
+
+**Conclusion**
+
+
+
+Appendix
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
