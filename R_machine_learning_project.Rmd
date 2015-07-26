@@ -558,7 +558,14 @@ dotplot(results)
 
 ```
 
+From the grouped boxplot and the dotplot output in the caret package it can be seen that in terms of both Kappa and predictive accuracy ascertained using cross validation that the random forest and the C5.0 learner are the most effective.
 
+**Dotplot**
+![alt text](https://github.com/brennap3/coursera_practical_machine-learning/blob/master/Rplot_dotplot.png)
+
+
+**Grouped boxplot**
+![alt text](https://github.com/brennap3/coursera_practical_machine-learning/blob/master/Rplot_bwplot.png)
 
 **Determining the out of sample error of the random forest model**
 As random forests gave the best performance out of all the surveyed methods when assesing the predictive accuracy it was decided to test this model for its out of sample accuracy.
