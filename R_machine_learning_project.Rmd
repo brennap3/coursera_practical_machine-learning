@@ -506,7 +506,7 @@ modelFit.gbm.unproc <- train(classe ~.,data=trainv6,method="gbm",trControl = trC
 print(modelFit.gbm.unproc)
 ```
 
-**Which learner performed best **
+**Which learner performed best**
 
 This is best  understood using the summary information.
 Both random forest and the c5.0 learner deliver the best predicitive accuracy and kappa values, The nnet delivers the worst followed by the naive bayes model. K-NN and the gbm also give high levels of predictive accuracy.
