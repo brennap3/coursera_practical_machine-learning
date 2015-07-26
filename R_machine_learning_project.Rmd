@@ -102,7 +102,7 @@ trainingnas <- apply(train, 2, function(x) {
 
 str(trainingnas)
 
-##remove rows with na's
+##remove columns with na's values
 trainv2<- train[, which(trainingnas == 0)]
 summary(trainv2)
 

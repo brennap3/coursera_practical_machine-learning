@@ -51,17 +51,17 @@ print(classe_count)
 
 
 ##clean the data
-
+?apply
 trainingnas <- apply(train, 2, function(x) {
   sum(is.na(x))
 })
 
 str(trainingnas)
 
-##remove rows with na's
+##remove columns with na's
 trainv2<- train[, which(trainingnas == 0)]
 summary(trainv2)
-
+nrows
 ##remove rows with Zero variance
 nzvartrainv3 <- nearZeroVar(trainv2, saveMetrics= TRUE)
 ##http://topepo.github.io/caret/preprocess.html
