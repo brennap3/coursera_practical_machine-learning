@@ -83,6 +83,9 @@ print(classe_count)
 
 ```
 
+![alt text](https://github.com/brennap3/coursera_practical_machine-learning/blob/master/Rplot_Barcahrt_Classe.png)
+
+
 **Cleaning the data**
 
 From the data a check is first carried to see what covariates have all NA values. These are then removed from the analysis.
