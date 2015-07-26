@@ -20,6 +20,8 @@ library(dplyr)
 library(caret)
 library(utils)
 library(ggplot2)
+library(Hmisc)
+library(Boruta)
 
 ##read in the training and test data
 
@@ -738,6 +740,30 @@ Various models were trained.
 The models were evaluated using both cross validation and out of sample error.
 The models were applied to the 20 test cases available in the test data.
 
-Appendix
+**Writing out predictions**
+
+Predicitons are written out as below.
+
+```{r, echo=T,eval=F}
+##not my code
+
+setwd("C:\\Users\\Peter\\Documents\\Coursera_Practical_Machine_learning_Submission\\coursera_practical_machine-learning\\prediction_files")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictions)
+
+```
+
+**Notes**
+
+Rough work is contained within the  machine learning project rough work.r file.
+
+**Appendix**
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

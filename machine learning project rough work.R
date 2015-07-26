@@ -475,3 +475,16 @@ print(predictions)
 
 # [1] B A B A A E D B A A B C B A E E A B B B
 # Levels: A B C D E
+
+?setwd
+
+setwd("C:\\Users\\Peter\\Documents\\Coursera_Practical_Machine_learning_Submission\\coursera_practical_machine-learning\\prediction_files")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictions)
